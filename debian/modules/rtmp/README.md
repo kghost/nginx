@@ -91,6 +91,12 @@ For building debug version of nginx add `--with-debug`
 
 [Read more about debug log](https://github.com/arut/nginx-rtmp-module/wiki/Debug-log)
 
+### Contributing and Branch Policy
+
+The "dev" branch is the one where all contributions will be merged before reaching "master".
+If you plan to propose a patch, please commit into the "dev" branch or its own feature branch.
+Direct commit to "master" are not permitted.
+
 ### Windows limitations
 
 Windows support is limited. These features are not supported
@@ -112,10 +118,8 @@ name - interpreted by each application
 
 ### Multi-worker live streaming
 
-Module supports multi-worker live
-streaming through automatic stream pushing
-to nginx workers. This option is toggled with
-rtmp_auto_push directive.
+This NGINX-RTMP module does not support multi-worker live
+streaming. While this feature can be enabled through rtmp_auto_push on|off directive, it is ill advised because it is incompatible with NGINX versions starting 1.7.2 and up, there for it should not be used.
 
 
 ### Example nginx.conf
@@ -327,21 +331,6 @@ rtmp_auto_push directive.
                 # Serve DASH fragments
                 root /tmp;
                 add_header Cache-Control no-cache;
-            }
-        }
-    }
-
-
-### Multi-worker streaming example
-
-    rtmp_auto_push on;
-
-    rtmp {
-        server {
-            listen 1935;
-
-            application mytv {
-                live on;
             }
         }
     }

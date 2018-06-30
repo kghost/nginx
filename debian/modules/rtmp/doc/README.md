@@ -22,3 +22,8 @@
   * Notify
     * [on_playlist](directives.md#on_playlist)
     * [notify_send_redirect](directives.md#notify_send_redirect)
+  * Client Caching
+  	* [hls_allow_client_cache](directives.md#hls_allow_client_cache)
+  * Dash MPD generation
+    * [dash_clock_compensation](directives.md#dash_clock_compensation)
+    * [dash_clock_helper_uri](directives.md#dash_clock_helper_uri)

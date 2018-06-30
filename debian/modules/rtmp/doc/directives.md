@@ -35,6 +35,7 @@ Table of Contents
     * [exec_play](#exec_play)
     * [exec_play_done](#exec_play_done)
     * [exec_publish_done](#exec_publish_done)
+    * [exec_record_started](#exec_record_started)
     * [exec_record_done](#exec_record_done)
 * [Live](#live)
     * [live](#live)
@@ -76,6 +77,7 @@ Table of Contents
     * [on_done](#on_done)
     * [on_play_done](#on_play_done)
     * [on_publish_done](#on_publish_done)
+    * [on_record_started](#on_record_started)
     * [on_record_done](#on_record_done)
     * [on_update](#on_update)
     * [notify_update_timeout](#notify_update_timeout)
@@ -98,6 +100,7 @@ Table of Contents
     * [hls_fragment_slicing](#hls_fragment_slicing)
     * [hls_variant](#hls_variant)
     * [hls_type](#hls_type)
+    * [hls_allow_client_cache](#hls_allow_client_cache)
     * [hls_keys](#hls_keys)
     * [hls_key_path](#hls_key_path)
     * [hls_key_url](#hls_key_url)
@@ -109,6 +112,8 @@ Table of Contents
     * [dash_playlist_length](#dash_playlist_length)
     * [dash_nested](#dash_nested)
     * [dash_cleanup](#dash_cleanup)
+    * [dash_clock_compensation](#dash_clock_compensation)
+    * [dash_clock_helper_uri](#dash_clock_helper_uri)
 * [Access log](#access-log)
     * [access_log](#access_log)
     * [log_format](#log_format)
@@ -475,6 +480,18 @@ Context: rtmp, server, application
 Specifies external command with arguments to be executed on
 publish_done event. Return code is not analyzed. Substitution list
 is the same as for `exec_publish`.
+
+#### exec_record_started
+Syntax: `exec_record_started command arg*`  
+Context: rtmp, server, application, recorder
+
+Specifies external command with arguments to be executed when
+recording is started.
+* `recorder` - recorder name
+* `path` - recorded file path (`/tmp/rec/mystream-1389499351.flv`)
+* `filename` - path with directory omitted (`mystream-1389499351.flv`)
+* `basename` - file name with extension omitted (`mystream-1389499351`)
+* `dirname` - directory path (`/tmp/rec`)
 
 #### exec_record_done
 Syntax: `exec_record_done command arg*`  
@@ -1103,6 +1120,16 @@ Context: rtmp, server, application
 
 Same behavior as `on_done` but only for publish end event.
 
+#### on_record_started
+syntax: `on_record_started url`  
+context: rtmp, server, application, recorder  
+  
+Set record_started callback. In addition to common HTTP callback
+variables it receives the following values
+* recorder - recorder name in config or empty string for inline recorder
+* path - recording file path
+
+
 #### on_record_done
 syntax: `on_record_done url`  
 context: rtmp, server, application, recorder  
@@ -1415,6 +1442,19 @@ is enough for the whole event. Default is `live`;
 hls_type event;
 ```
 
+#### hls_allow_client_cache
+Syntax: `hls_allow_client_cache enabled|disabled`  
+Context: rtmp, server, application  
+
+Enables (or disables) client cache with `#EXT-X-ALLOW-CACHE` playlist
+directive.  Setting value to enabled allows supported clients to
+cache segments in a live DVR manner.  Setting value to disabled explicitly 
+tells supported clients to never cache segments.
+Unset by default (playlist directive will be absent).
+```sh
+hls_allow_client_cache enabled;
+```
+
 #### hls_keys
 Syntax: `hls_keys on|off`  
 Context: rtmp, server, application  
@@ -1589,6 +1629,45 @@ MPEG-DASH fragments and manifests from MPEG-DASH directory.
 Init fragments are deleted after stream manifest is deleted.
 ```sh
 dash_cleanup off;
+```
+
+#### dash\_clock_compensation
+Syntax: `dash_clock_compensation off|ntp|http_head|http_iso`  
+Context: rtmp, server, application  
+Default: off
+
+Toggles MPEG-DASH clock compentation element output into MPD.
+In this mode nginx provides `UTCTiming` element for MPEG-DASH manifest.
+Clock compensation provided by DASH-client if possible.
+- ntp - use NTP protocol
+- http_head - client must fetch header `Date` from URI (`dash_clock_helper_uri`)
+- http_iso - client must fetch date in ISO format from URI (`dash_clock_helper_uri`)
+
+Standard section: 4.7.2. Service Provider Requirements and Guidelines
+
+```sh
+dash\_clock_compensation off;
+```
+
+#### dash\_clock_helper_uri
+Syntax: `dash_clock_helper_uri URI`  
+Context: rtmp, server, application  
+Default: none
+
+URI helper resource for clock compensation for client.
+Clock compensation type:
+- ntp - address of NTP-server
+- http\_head - full HTTP uri
+- http\_iso - full HTTP uri
+
+Standard section: 4.7.2. Service Provider Requirements and Guidelines
+
+```sh
+dash\_clock\_helper_uri http://rtmp-server/static/time.txt;
+
+_or_
+
+dash\_clock\_helper_uri http://rtmp-server/lua/time-iso;
 ```
 
 ## Access log

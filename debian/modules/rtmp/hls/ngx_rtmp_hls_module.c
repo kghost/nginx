@@ -110,6 +110,7 @@ typedef struct {
     ngx_msec_t                          max_audio_delay;
     size_t                              audio_buffer_size;
     ngx_flag_t                          cleanup;
+    ngx_uint_t                          allow_client_cache;
     ngx_array_t                        *variant;
     ngx_str_t                           base_url;
     ngx_int_t                           granularity;
@@ -136,6 +137,9 @@ typedef struct {
 
 #define NGX_RTMP_HLS_TYPE_LIVE          1
 #define NGX_RTMP_HLS_TYPE_EVENT         2
+
+#define NGX_RTMP_HLS_CACHE_DISABLED     1
+#define NGX_RTMP_HLS_CACHE_ENABLED      2
 
 
 static ngx_conf_enum_t                  ngx_rtmp_hls_naming_slots[] = {
@@ -167,6 +171,11 @@ static ngx_conf_enum_t                  ngx_rtmp_hls_type_slots[] = {
     { ngx_null_string,                  0 }
 };
 
+static ngx_conf_enum_t                  ngx_rtmp_hls_cache[] = {
+    { ngx_string("enabled"),            NGX_RTMP_HLS_CACHE_ENABLED  },
+    { ngx_string("disabled"),           NGX_RTMP_HLS_CACHE_DISABLED },
+    { ngx_null_string,                  0 }
+};
 
 static ngx_command_t ngx_rtmp_hls_commands[] = {
 
@@ -281,6 +290,13 @@ static ngx_command_t ngx_rtmp_hls_commands[] = {
       NGX_RTMP_APP_CONF_OFFSET,
       offsetof(ngx_rtmp_hls_app_conf_t, cleanup),
       NULL },
+
+    { ngx_string("hls_allow_client_cache"),
+      NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_RTMP_APP_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_enum_slot,
+      NGX_RTMP_APP_CONF_OFFSET,
+      offsetof(ngx_rtmp_hls_app_conf_t, allow_client_cache),
+      &ngx_rtmp_hls_cache },       
 
     { ngx_string("hls_variant"),
       NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_RTMP_APP_CONF|NGX_CONF_1MORE,
@@ -457,7 +473,7 @@ ngx_rtmp_hls_write_variant_playlist(ngx_rtmp_session_t *s)
         p = buffer;
         last = buffer + sizeof(buffer);
 
-        p = ngx_slprintf(p, last, "#EXT-X-STREAM-INF:PROGRAM-ID=1");
+        p = ngx_slprintf(p, last, "#EXT-X-STREAM-INF:PROGRAM-ID=1,CLOSED-CAPTIONS=NONE");
 
         arg = var->args.elts;
         for (k = 0; k < var->args.nelts; k++, arg++) {
@@ -564,6 +580,12 @@ ngx_rtmp_hls_write_playlist(ngx_rtmp_session_t *s)
         p = ngx_slprintf(p, end, "#EXT-X-PLAYLIST-TYPE:EVENT\n");
     }
 
+    if (hacf->allow_client_cache == NGX_RTMP_HLS_CACHE_ENABLED) {
+        p = ngx_slprintf(p, end, "#EXT-X-ALLOW-CACHE:YES\n");
+    } else if (hacf->allow_client_cache == NGX_RTMP_HLS_CACHE_DISABLED) {
+        p = ngx_slprintf(p, end, "#EXT-X-ALLOW-CACHE:NO\n");
+    }
+
     n = ngx_write_fd(fd, buffer, p - buffer);
     if (n < 0) {
         goto write_err;
@@ -586,7 +608,7 @@ ngx_rtmp_hls_write_playlist(ngx_rtmp_session_t *s)
 
     for (i = 0; i < ctx->nfrags; i++) {
         f = ngx_rtmp_hls_get_frag(s, i);
-        if (i == 0 && f->datetime && f->datetime->len > 0) {
+        if ((i == 0 || f->discont) && f->datetime && f->datetime->len > 0) {
             p = ngx_snprintf(buffer, sizeof(buffer), "#EXT-X-PROGRAM-DATE-TIME:");
             n = ngx_write_fd(fd, buffer, p - buffer);
             if (n < 0) {
@@ -1028,7 +1050,7 @@ ngx_rtmp_hls_open_fragment(ngx_rtmp_session_t *s, uint64_t ts,
     }
 
     // This is continuity counter for TS header
-    mpegts_cc = (ctx->nfrags + ctx->frag);
+    mpegts_cc = (ngx_uint_t)(ctx->nfrags + ctx->frag);
 
     ngx_log_debug7(NGX_LOG_DEBUG_RTMP, s->connection->log, 0,
                    "hls: open fragment file='%s', keyfile='%s', "
@@ -1049,7 +1071,7 @@ ngx_rtmp_hls_open_fragment(ngx_rtmp_session_t *s, uint64_t ts,
     codec_ctx = ngx_rtmp_get_module_ctx(s, ngx_rtmp_codec_module);
 
     if (ngx_rtmp_mpegts_open_file(&ctx->file, ctx->stream.data,
-                                  s->connection->log, &codec_ctx->audio_codec_id, mpegts_cc)
+                                  s->connection->log, codec_ctx, mpegts_cc)
         != NGX_OK)
     {
         return NGX_ERROR;
@@ -2082,6 +2104,7 @@ ngx_rtmp_hls_video(ngx_rtmp_session_t *s, ngx_rtmp_header_t *h,
                         ngx_log_error(NGX_LOG_ERR, s->connection->log, 0,
                                       "hls: error appending AUD NAL");
                     }
+                    /* fall through */
                 case 9:
                     aud_sent = 1;
                     break;
@@ -2343,8 +2366,11 @@ ngx_rtmp_hls_cleanup_dir(ngx_str_t *ppath, ngx_msec_t playlen)
     }
 }
 
-
+#if (nginx_version >= 1011005)
+static ngx_msec_t
+#else
 static time_t
+#endif
 ngx_rtmp_hls_cleanup(void *data)
 {
     ngx_rtmp_hls_cleanup_t *cleanup = data;
@@ -2352,7 +2378,11 @@ ngx_rtmp_hls_cleanup(void *data)
     ngx_rtmp_hls_cleanup_dir(&cleanup->path, cleanup->playlen);
 
     // Next callback in half of playlist length time
+#if (nginx_version >= 1011005)
+    return cleanup->playlen / 2;
+#else
     return cleanup->playlen / 2000;
+#endif
 }
 
 
@@ -2440,6 +2470,7 @@ ngx_rtmp_hls_create_app_conf(ngx_conf_t *cf)
     conf->max_audio_delay = NGX_CONF_UNSET_MSEC;
     conf->audio_buffer_size = NGX_CONF_UNSET_SIZE;
     conf->cleanup = NGX_CONF_UNSET;
+    conf->allow_client_cache = NGX_CONF_UNSET_UINT;
     conf->granularity = NGX_CONF_UNSET;
     conf->keys = NGX_CONF_UNSET;
     conf->frags_per_key = NGX_CONF_UNSET_UINT;

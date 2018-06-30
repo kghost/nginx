@@ -14,6 +14,7 @@ RTMP_CORE_MODULES="                                         \
                 ngx_rtmp_relay_module                       \
                 ngx_rtmp_exec_module                        \
                 ngx_rtmp_auto_push_module                   \
+                ngx_rtmp_auto_push_index_module             \
                 ngx_rtmp_notify_module                      \
                 ngx_rtmp_log_module                         \
                 ngx_rtmp_limit_module                       \
@@ -75,6 +76,7 @@ RTMP_CORE_SRCS="                                            \
                 $ngx_addon_dir/hls/ngx_rtmp_hls_module.c    \
                 $ngx_addon_dir/dash/ngx_rtmp_dash_module.c  \
                 $ngx_addon_dir/hls/ngx_rtmp_mpegts.c        \
+                $ngx_addon_dir/hls/ngx_rtmp_mpegts_crc.c    \
                 $ngx_addon_dir/dash/ngx_rtmp_mp4.c          \
                 "
 RTMP_HTTP_SRCS="                                            \
@@ -88,7 +90,7 @@ if [ "$ngx_module_link" = "" ] ; then
 	# Old nginx version
 	ngx_module_link=NONE
 
-	CORE_MODULES="$CORE_MODULES $RTMP_CORE_MODULES"
+	EVENT_MODULES="$EVENT_MODULES $RTMP_CORE_MODULES"
 	HTTP_MODULES="$HTTP_MODULES $RTMP_HTTP_MODULES"
 	NGX_ADDON_DEPS="$NGX_ADDON_DEPS $RTMP_DEPS"
 	NGX_ADDON_SRCS="$NGX_ADDON_SRCS $RTMP_CORE_SRCS $RTMP_HTTP_SRCS"
@@ -99,7 +101,7 @@ if [ $ngx_module_link = DYNAMIC ] ; then
     ngx_module_srcs="$RTMP_CORE_SRCS $RTMP_HTTP_SRCS"
     . auto/module
 elif [ $ngx_module_link = ADDON ] ; then
-    ngx_module_type=CORE
+    ngx_module_type=EVENT
     ngx_module_name=$RTMP_CORE_MODULES
     ngx_module_srcs=$RTMP_CORE_SRCS
     . auto/module
