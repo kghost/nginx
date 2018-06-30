@@ -558,7 +558,11 @@ ngx_rtmp_send(ngx_event_t *wev)
         ngx_del_event(wev, NGX_WRITE_EVENT, 0);
     }
 
+#if (nginx_version >= 1007012)
+    ngx_event_process_posted((ngx_cycle_t *) ngx_cycle,(ngx_queue_t *) &s->posted_dry_events);
+#else
     ngx_event_process_posted((ngx_cycle_t *) ngx_cycle, &s->posted_dry_events);
+#endif
 }
 
 
@@ -821,12 +825,6 @@ ngx_rtmp_set_chunk_size(ngx_rtmp_session_t *s, ngx_uint_t size)
     ngx_log_debug1(NGX_LOG_DEBUG_RTMP, s->connection->log, 0,
         "setting chunk_size=%ui", size);
 
-    if (size > NGX_RTMP_MAX_CHUNK_SIZE) {
-        ngx_log_error(NGX_LOG_ALERT, s->connection->log, 0,
-                      "too big RTMP chunk size:%ui", size);
-        return NGX_ERROR;
-    }
-
     cscf = ngx_rtmp_get_module_srv_conf(s, ngx_rtmp_core_module);
 
     s->in_old_pool = s->in_pool;
@@ -874,6 +872,7 @@ ngx_rtmp_set_chunk_size(ngx_rtmp_session_t *s, ngx_uint_t size)
 
                 bi->pos += (ngx_cpymem(bo->last, bi->pos,
                             bo->end - bo->last) - bo->last);
+                bo->last = bo->end;
                 lo->next = ngx_rtmp_alloc_in_buf(s);
                 lo = lo->next;
                 if (lo == NULL) {
